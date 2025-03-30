@@ -146,7 +146,15 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "../public/index.html"));
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`[Server] Running on http://localhost:${PORT}`);
-});
+// Export a function to start the server programmatically
+export function startServer(port = process.env.PORT || 5200) {
+  const server = app.listen(port, () => {
+    console.log(`[Server] Running on http://localhost:${port}`);
+  });
+  return server;
+}
+
+// If this file is run directly, start the server automatically.
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  startServer();
+}
