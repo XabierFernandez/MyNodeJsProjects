@@ -1,0 +1,69 @@
+body {
+    font-family: Arial, sans-serif;
+}
+
+/* Force the entire body to have extra margin
+   if you don't want container-fluid to fill the edges */
+.container-fluid {
+    /* You can tweak these if you want even more spacing */
+    /* padding-left: 30px;
+  padding-right: 30px; */
+}
+
+/* Increase the height for messages so it fills more vertical space */
+.message-output {
+    max-height: 750px; /* Adjust as you like */
+    overflow-y: auto;
+}
+
+/* Each individual message block */
+.message {
+    background-color: #f8f9fa;
+    border: 1px solid #e2e2e2;
+    border-radius: 4px;
+    padding: 8px;
+    margin-bottom: 10px;
+    font-family: "Courier New", Courier, monospace;
+    font-size: 0.95rem;
+}
+
+/* Timestamp styling */
+.timestamp {
+    color: #6c757d;
+    font-size: 0.85rem;
+    margin-bottom: 4px;
+}
+
+/* Topic label styling */
+.topic-label {
+    margin-bottom: 4px;
+    font-weight: bold;
+    color: #555;
+}
+.topic-name {
+    color: #333;
+}
+
+/* Preformatted JSON output styling */
+.json-output {
+    white-space: pre-wrap;
+    margin: 0;
+    font-family: "Courier New", Courier, monospace;
+}
+
+/* Syntax Highlighting Classes */
+.key {
+    color: brown;
+}
+.string {
+    color: green;
+}
+.number {
+    color: blue;
+}
+.boolean {
+    color: purple;
+}
+.null {
+    color: red;
+}
