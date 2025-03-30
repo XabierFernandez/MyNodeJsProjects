@@ -10,16 +10,14 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 
-// Serve static files (HTML, CSS, JS)
+// Serve static files from the public folder
 app.use(express.static(path.join(__dirname, "../public")));
-
-// Parse JSON bodies (for /connect and /disconnect)
 app.use(bodyParser.json());
 
-// SSE clients array
+// Array to hold SSE client responses
 const SSEClients = [];
 
-// SSE endpoint – clients connect here to receive messages
+// SSE endpoint: clients connect here to receive messages
 app.get("/events", (req, res) => {
   console.log("[SSE] Client connected");
   res.writeHead(200, {
@@ -27,19 +25,15 @@ app.get("/events", (req, res) => {
     "Cache-Control": "no-cache",
     Connection: "keep-alive",
   });
-
   SSEClients.push(res);
-
   req.on("close", () => {
     console.log("[SSE] Client disconnected");
     const index = SSEClients.indexOf(res);
-    if (index >= 0) {
-      SSEClients.splice(index, 1);
-    }
+    if (index !== -1) SSEClients.splice(index, 1);
   });
 });
 
-// Function to broadcast a message to all SSE clients
+// Helper function to broadcast a message to all SSE clients
 function broadcastMessage(message) {
   console.log("[Broadcast]", message);
   SSEClients.forEach((client) => {
@@ -47,30 +41,58 @@ function broadcastMessage(message) {
   });
 }
 
-// Global MQTT client reference
 let mqttClient = null;
 
-// POST /connect – Initiates the MQTT connection
+// POST /connect: Establish the MQTT connection
 app.post("/connect", (req, res) => {
-  const { brokerUrl, brokerPort, topic, username, password, qos } = req.body;
+  const {
+    brokerUrl,
+    brokerPort,
+    topic,
+    username,
+    password,
+    qos,
+    tls,
+    ca,
+    cert,
+    key,
+    mqttVersion,
+  } = req.body;
 
-  // If we already have a client, prevent multiple connections
   if (mqttClient) {
     return res.status(400).json({ error: "Already connected" });
   }
 
-  // Build the MQTT URL (e.g., mqtt://datasim.n3uron.com:1883)
+  // Build connection URL based on TLS toggle and protocol selection
   let connectUrl = brokerUrl;
-  if (!connectUrl.startsWith("mqtt://") && !connectUrl.startsWith("tcp://")) {
-    connectUrl = "mqtt://" + connectUrl;
+  if (tls) {
+    if (!connectUrl.startsWith("mqtts://")) {
+      connectUrl = "mqtts://" + connectUrl;
+    }
+  } else {
+    if (!connectUrl.startsWith("mqtt://") && !connectUrl.startsWith("tcp://")) {
+      connectUrl = "mqtt://" + connectUrl;
+    }
   }
   if (brokerPort) {
-    connectUrl += `:${brokerPort}`;
+    connectUrl += ":" + brokerPort;
   }
 
+  // Set up connection options, including MQTT version if 5 is selected.
   const options = {};
   if (username) options.username = username;
   if (password) options.password = password;
+  if (mqttVersion === "5") {
+    options.protocolVersion = 5;
+  } else {
+    // MQTT.js default for MQTT 3.1.1 is protocolVersion 4
+    options.protocolVersion = 4;
+  }
+  if (tls) {
+    if (ca) options.ca = ca;
+    if (cert) options.cert = cert;
+    if (key) options.key = key;
+  }
 
   broadcastMessage(`Connecting to: ${connectUrl} ...`);
 
@@ -87,8 +109,16 @@ app.post("/connect", (req, res) => {
     });
   });
 
-  mqttClient.on("message", (t, message) => {
-    broadcastMessage(`Topic: ${t} | Message: ${message.toString()}`);
+  mqttClient.on("message", (topic, message, packet) => {
+    let propsStr = "";
+    if (packet.properties) {
+      // Convert the properties object to a JSON string.
+      propsStr = " | Props: " + JSON.stringify(packet.properties);
+    }
+    // Broadcast message with properties appended
+    broadcastMessage(
+      `Topic: ${topic} | Message: ${message.toString()}${propsStr}`,
+    );
   });
 
   mqttClient.on("error", (err) => {
@@ -98,7 +128,7 @@ app.post("/connect", (req, res) => {
   return res.json({ status: "Connecting" });
 });
 
-// POST /disconnect – Ends the MQTT connection
+// POST /disconnect: End the MQTT connection
 app.post("/disconnect", (req, res) => {
   if (mqttClient) {
     mqttClient.end(() => {
@@ -111,12 +141,11 @@ app.post("/disconnect", (req, res) => {
   }
 });
 
-// Serve the main page
+// Serve the main HTML file
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "../public/index.html"));
 });
 
-// Start the server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`[Server] Running on http://localhost:${PORT}`);
