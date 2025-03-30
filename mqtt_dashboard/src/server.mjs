@@ -3,7 +3,6 @@ import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
 import mqtt from "mqtt";
-import bodyParser from "body-parser";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -12,7 +11,7 @@ const app = express();
 
 // Serve static files from the public folder
 app.use(express.static(path.join(__dirname, "../public")));
-app.use(bodyParser.json());
+app.use(express.json());
 
 // Array to hold SSE client responses
 const SSEClients = [];
