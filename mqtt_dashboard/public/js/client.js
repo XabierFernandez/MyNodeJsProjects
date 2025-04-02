@@ -1,10 +1,6 @@
 // Global array to store historical MQTT data (each message as an object)
 const historicalData = [];
 
-// Global variables to store chart property paths for continuous updating
-window.chartXPath = null;
-window.chartYPath = null;
-
 // SSE Setup: Listen to /events for real-time messages
 const eventSource = new EventSource("/events");
 const messagesDiv = document.getElementById("messages");
@@ -12,10 +8,15 @@ const messagesDiv = document.getElementById("messages");
 eventSource.onmessage = function (e) {
   const { topic, jsonString, props } = parseTopicAndPayload(e.data);
   let dataObj;
-  try {
-    dataObj = JSON.parse(jsonString);
-  } catch (err) {
-    console.error("JSON parse error:", err);
+  const trimmed = jsonString.trim();
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    try {
+      dataObj = JSON.parse(jsonString);
+    } catch (err) {
+      console.error("JSON parse error:", err);
+      dataObj = { text: jsonString };
+    }
+  } else {
     dataObj = { text: jsonString };
   }
   if (!dataObj.receivedTime) {
@@ -23,11 +24,10 @@ eventSource.onmessage = function (e) {
   }
   historicalData.push(dataObj);
 
-  // Build HTML for display
+  let displayContent = dataObj.text ? dataObj.text : syntaxHighlight(dataObj);
   let displayedTopic = topic
     ? `<div class="topic-label">Topic: <span class="topic-name">${topic}</span></div>`
     : "";
-  let messageHTML = dataObj.text ? dataObj.text : syntaxHighlight(dataObj);
   let propsHTML = "";
   if (props) {
     try {
@@ -42,13 +42,13 @@ eventSource.onmessage = function (e) {
     <div class="message">
       <div class="timestamp">${time}</div>
       ${displayedTopic}
-      <pre class="json-output">${messageHTML}</pre>
+      <pre class="json-output">${displayContent}</pre>
       ${propsHTML}
     </div>
   `;
   messagesDiv.innerHTML += fullHTML;
 
-  // If chart is plotted, update it continuously with the new data point.
+  // Continuous chart update if chart is plotted
   if (
     window.myChart &&
     window.chartXPath != null &&
@@ -56,7 +56,6 @@ eventSource.onmessage = function (e) {
   ) {
     let newX = getValueByPath(dataObj, window.chartXPath);
     let newY = getValueByPath(dataObj, window.chartYPath);
-    // If newX or newY is an array, take the first element
     if (Array.isArray(newX)) newX = newX[0];
     if (Array.isArray(newY)) newY = newY[0];
     if (newX !== null && newY !== null) {
@@ -111,7 +110,7 @@ function syntaxHighlight(json) {
  * getValueByPath:
  * - If path is empty or "current", returns item.receivedTime.
  * - If path contains a dot (e.g. "/Test/wave.ts"), then:
- *     * Splits the path into two parts: the array property and the sub-property.
+ *     * Splits the path into the array property and the sub-property.
  *     * Returns an array of values for that sub-property from each element.
  * - Otherwise, returns item[path].
  * Numeric strings are converted to numbers.
@@ -185,16 +184,35 @@ document.getElementById("clearBtn").addEventListener("click", () => {
   messagesDiv.innerHTML = "";
 });
 
-// Download Output button handler
-document.getElementById("downloadBtn").addEventListener("click", () => {
-  const text = messagesDiv.innerText;
-  const blob = new Blob([text], { type: "text/plain" });
-  const url = URL.createObjectURL(blob);
+// Export Data (CSV) button handler (updated)
+document.getElementById("exportBtn").addEventListener("click", () => {
+  if (historicalData.length === 0) return;
+  // Use a union of keys from all historical data objects for CSV header
+  const headerSet = new Set();
+  historicalData.forEach((item) => {
+    Object.keys(item).forEach((key) => headerSet.add(key));
+  });
+  const headers = Array.from(headerSet).join(",");
+  let csv = headers + "\n";
+  historicalData.forEach((item) => {
+    let row = [];
+    headerSet.forEach((key) => {
+      let cell = item[key];
+      if (typeof cell === "object") {
+        cell = JSON.stringify(cell);
+      }
+      row.push(cell);
+    });
+    csv += row.join(",") + "\n";
+  });
+  // Encode the CSV string as a data URI
+  const encodedUri = encodeURI("data:text/csv;charset=utf-8," + csv);
   const link = document.createElement("a");
-  link.href = url;
-  link.download = "mqtt_messages.txt";
+  link.setAttribute("href", encodedUri);
+  link.setAttribute("download", "historical_data.csv");
+  document.body.appendChild(link);
   link.click();
-  URL.revokeObjectURL(url);
+  document.body.removeChild(link);
 });
 
 // Copy to Clipboard button handler
@@ -221,7 +239,6 @@ document.getElementById("plotBtn").addEventListener("click", () => {
   window.chartXPath = xPath === "" ? "current" : xPath;
   window.chartYPath = yPath === "" ? "value" : yPath;
 
-  // Build data points from historicalData
   const dataPoints = [];
   historicalData.forEach((item) => {
     const rawX = getValueByPath(item, window.chartXPath);
@@ -252,10 +269,7 @@ document.getElementById("plotBtn").addEventListener("click", () => {
     }
   });
 
-  // Sort data points by x (time)
   dataPoints.sort((a, b) => a.x - b.x);
-
-  // Prepare labels and data for Chart.js
   const labels = dataPoints.map((pt) => new Date(pt.x));
   const yValues = dataPoints.map((pt) => pt.y);
 
@@ -342,22 +356,4 @@ document.getElementById("plotBtn").addEventListener("click", () => {
       },
     },
   });
-});
-
-// Export Data (CSV) button handler
-document.getElementById("exportBtn").addEventListener("click", () => {
-  if (historicalData.length === 0) return;
-  const headers = Object.keys(historicalData[0]).join(",");
-  let csv = headers + "\n";
-  historicalData.forEach((item) => {
-    const row = Object.values(item).join(",");
-    csv += row + "\n";
-  });
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "historical_data.csv";
-  link.click();
-  URL.revokeObjectURL(url);
 });
